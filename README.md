@@ -1,4 +1,15 @@
-# Customer360 AI Dashboard
+---
+title: Custovista
+emoji: 🧠
+colorFrom: blue
+colorTo: purple
+sdk: gradio
+sdk_version: "4.19.2"
+app_file: app.py
+pinned: false
+---
+
+# Custovista
 
 A comprehensive customer analytics dashboard that combines data ingestion, segmentation, fraud detection, and recommendations in one unified interface.
 
