@@ -126,8 +126,8 @@ def respond_to_user(message, history):
         return history
 
 # ========== Gradio UI ==========
-with gr.Blocks() as demo:
-    gr.Markdown("# 🧠 Customer360 AI Dashboard")
+with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", font="Roboto Mono")) as demo:
+    gr.Markdown("# Custovista: Deep Dive into Customer Realities")
     gr.Markdown("Simulate data ingestion, segmentation, fraud detection, recommendations, and oversight in one go.")
 
     with gr.Row():
@@ -144,7 +144,7 @@ with gr.Blocks() as demo:
         with gr.Tab("🎯 Recommendations"):
             reco_table = gr.Dataframe()
 
-        with gr.Tab("🤖 Fraud Chat Assistant"):
+        with gr.Tab("🤖 Vista Assistant"):
             chatbot = gr.Chatbot(label="Groq Fraud Assistant", height=400)
             msg = gr.Textbox(placeholder="Ask anything about fraud risks, suspicious transactions, etc...", show_label=False)
 
