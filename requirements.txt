@@ -1,0 +1,6 @@
+   pandas
+   faker
+   scikit-learn
+   gradio
+   groq
+   python-dotenv
