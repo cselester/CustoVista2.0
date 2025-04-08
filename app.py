@@ -1,5 +1,3 @@
-# gradio_ui.py
-
 import gradio as gr
 import pandas as pd
 from ingestion_agent import IngestionAgent
@@ -29,6 +27,39 @@ oversight = OversightPanelAgent()
 final_df = pd.DataFrame()
 escalated_df = pd.DataFrame()
 
+# ========== Helper Functions ==========
+def build_contextual_summary():
+    summary = ""
+
+    if not final_df.empty:
+        fraud_count = final_df["fraud_alert"].sum()
+        total = len(final_df)
+        top_segments = final_df["segment"].value_counts().head(3).to_dict()
+        summary += f"There are {fraud_count} high-risk customers out of {total}.\n"
+        summary += f"Top customer segments are: {top_segments}.\n"
+
+    if not escalated_df.empty:
+        top_escalated = escalated_df["customer_id"].tolist()[:3]
+        summary += f"Some recently escalated customer IDs are: {top_escalated}\n"
+
+    return summary.strip()
+
+def get_customer_details(customer_id):
+    if final_df.empty:
+        return "Customer data is not loaded."
+
+    match = final_df[final_df["id"] == int(customer_id)]
+    if match.empty:
+        return f"No data found for customer ID {customer_id}."
+    row = match.iloc[0]
+    return (
+        f"Customer ID: {row['id']}\n"
+        f"Name: {row['name']}\n"
+        f"Segment: {row['segment']}\n"
+        f"Fraud Alert: {'Yes' if row['fraud_alert'] else 'No'}\n"
+        f"Recommendations: {row['recommendations']}"
+    )
+
 # ========== Main Pipeline ==========
 def run_pipeline():
     global final_df, escalated_df
@@ -52,26 +83,6 @@ def run_pipeline():
     final_df.to_csv("output/final_customer360_result.csv", index=False)
     return final_df, "output/final_customer360_result.csv"
 
-def filter_output(segment, fraud_alert):
-    if final_df.empty:
-        return pd.DataFrame()
-
-    df = final_df.copy()
-    if segment != "All":
-        df = df[df["segment"] == segment]
-    if fraud_alert != "All":
-        df = df[df["fraud_alert"] == (fraud_alert == "Yes")]
-    return df
-
-def get_recommendations():
-    if final_df.empty:
-        return pd.DataFrame()
-    return final_df[["id", "name", "segment", "recommendations"]]
-
-def get_fraud_cases():
-    global escalated_df
-    return escalated_df if not escalated_df.empty else pd.DataFrame()
-
 # ========== Groq Chat Assistant ==========
 try:
     groq_client = Groq(api_key=GROQ_API_KEY)
@@ -81,27 +92,34 @@ except Exception as e:
 
 def respond_to_user(message, history):
     if groq_client is None:
-        return history + [(message, "Error: Groq API client not properly initialized. Please check your API key.")]
+        return history + [(message, "Groq API not initialized. Check your key.")]
     
     try:
-        # Convert Gradio history (list of tuples) to OpenAI-style messages
-        messages = [{"role": "system", "content": "You are a helpful fraud detection assistant."}]
+        system_prompt = (
+            "You are an intelligent assistant for analyzing customer fraud, segmentation, and recommendations. "
+            "Use the data below as internal company insights to respond:\n\n"
+            + build_contextual_summary()
+        )
+
+        messages = [{"role": "system", "content": system_prompt}]
         for user, assistant in history:
             messages.append({"role": "user", "content": user})
             messages.append({"role": "assistant", "content": assistant})
-
-        # Add latest user message
         messages.append({"role": "user", "content": message})
 
-        # Get response from Groq
-        response = groq_client.chat.completions.create(
-            model="llama3-8b-8192",
-            messages=messages
-        )
+        if message.lower().startswith("customer "):
+            customer_id = message.split(" ")[-1]
+            reply = get_customer_details(customer_id)
+        else:
+            response = groq_client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=messages
+            )
+            reply = response.choices[0].message.content
 
-        reply = response.choices[0].message.content
         history.append((message, reply))
         return history
+
     except Exception as e:
         error_message = f"Error communicating with Groq API: {str(e)}"
         history.append((message, error_message))
@@ -118,12 +136,8 @@ with gr.Blocks() as demo:
 
     with gr.Tabs():
         with gr.Tab("📊 Overview"):
-            with gr.Row():
-                segment_filter = gr.Dropdown(choices=["All", "Loyal", "High Value", "Promising", "At Risk", "New"],
-                                              label="Segment Filter", value="All")
-                fraud_filter = gr.Dropdown(choices=["All", "Yes", "No"], label="Fraud Alert Filter", value="All")
             overview_table = gr.Dataframe()
-
+        
         with gr.Tab("🚨 Escalated Fraud Cases"):
             fraud_table = gr.Dataframe()
 
@@ -136,12 +150,9 @@ with gr.Blocks() as demo:
 
             msg.submit(respond_to_user, inputs=[msg, chatbot], outputs=[chatbot])
 
-    # Button actions
     run_btn.click(fn=run_pipeline, outputs=[overview_table, download_btn])
-    run_btn.click(fn=get_fraud_cases, outputs=fraud_table)
-    run_btn.click(fn=get_recommendations, outputs=reco_table)
-    segment_filter.change(fn=filter_output, inputs=[segment_filter, fraud_filter], outputs=overview_table)
-    fraud_filter.change(fn=filter_output, inputs=[segment_filter, fraud_filter], outputs=overview_table)
+    run_btn.click(fn=lambda: escalated_df, outputs=fraud_table)
+    run_btn.click(fn=lambda: final_df[["id", "name", "segment", "recommendations"]], outputs=reco_table)
 
 # Launch the app
 if __name__ == "__main__":
