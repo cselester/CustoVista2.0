@@ -1,6 +1,5 @@
 ---
 title: Custovista
-emoji: 🧠
 colorFrom: blue
 colorTo: purple
 sdk: gradio
